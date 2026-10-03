@@ -938,3 +938,112 @@ test("微调保存失败保留原倒计时，按钮可继续操作", async ({ pa
     page.getByRole("button", { name: "逆魔 +1分", exact: true }),
   ).toBeEnabled();
 });
+
+for (const width of [320, 303]) {
+  test(`精简列表在 ${width}px 可用宽度及批量提醒下没有横向溢出`, async ({
+    page,
+  }, testInfo) => {
+    // 303px 模拟 320px 窗口被 Windows 传统滚动条占用 17px。
+    const timers = Array.from({ length: 9 }, (_, index) => ({
+      ...waiting,
+      id: index + 1,
+      name: "长名称怪物".repeat(7) + index,
+      minutes: 1440,
+      deadline: now + 86_400_000,
+    }));
+    await installNativeFixture(page, { now, timers, alerts: [] });
+    await page.getByRole("button", { name: "精简模式", exact: true }).click();
+    await page.setViewportSize({ width, height: 600 });
+    await page.evaluate(() => {
+      Reflect.set(window, "compactTestAlerts", []);
+      const internals = Reflect.get(window, "__TAURI_INTERNALS__");
+      const original = internals.invoke;
+      internals.invoke = async (
+        command: string,
+        args: Record<string, unknown>,
+      ) => {
+        if (command === "acknowledge_alerts")
+          Reflect.set(window, "compactTestAlerts", []);
+        const result = await original(command, args);
+        if (command === "get_snapshot") {
+          result.alerts = Reflect.get(window, "compactTestAlerts");
+          if (result.alerts.length > 0)
+            Reflect.set(
+              window,
+              "compactTestDeadline",
+              result.alerts[0].deadline,
+            );
+          const deadline = Reflect.get(window, "compactTestDeadline");
+          if (typeof deadline === "number") {
+            result.timers = result.timers.map((timer: Timer) =>
+              timer.id === 1 ? { ...timer, deadline } : timer,
+            );
+          }
+        }
+        return result;
+      };
+    });
+    for (const phase of ["none", "warning", "ready", "acknowledged"]) {
+      if (phase === "acknowledged")
+        await page.getByRole("button", { name: "知道了", exact: true }).click();
+      const alerts: Alert[] =
+        phase === "warning" || phase === "ready"
+          ? timers.map((timer) => ({
+              id: `${timer.id}:${phase}`,
+              timerId: timer.id,
+              name: timer.name,
+              kind: phase,
+              deadline: phase === "ready" ? now : now + 180_000,
+            }))
+          : [];
+      await page.evaluate((next) => {
+        Reflect.set(window, "compactTestAlerts", next);
+      }, alerts);
+      const reminder = page.getByRole("alert", { name: "刷新提醒" });
+      if (alerts.length > 0) {
+        await expect(reminder).toBeVisible();
+        await expect(reminder.locator("span").first()).toHaveText(
+          phase === "ready" ? "已经刷新" : "即将刷新 · 03:00",
+        );
+        expect(
+          await page
+            .locator(".compact-alert-list")
+            .evaluate((list) => list.scrollWidth <= list.clientWidth),
+        ).toBe(true);
+      } else {
+        await expect(reminder).not.toBeVisible();
+      }
+      if (phase === "ready" || phase === "acknowledged")
+        await expect(page.getByRole("timer").first()).toHaveText("已刷新");
+      if (phase === "ready" && width === 303) {
+        await page.evaluate(() => scrollTo(0, 0));
+        await page.screenshot({
+          path: testInfo.outputPath("compact-ready.png"),
+        });
+      }
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth <=
+            document.documentElement.clientWidth,
+        ),
+      ).toBe(true);
+      for (const button of await page
+        .getByRole("article")
+        .getByRole("button")
+        .all()) {
+        const bounds = await button.boundingBox();
+        expect(bounds?.x).toBeGreaterThanOrEqual(0);
+        expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(
+          width,
+        );
+      }
+      await page.getByRole("article").last().scrollIntoViewIfNeeded();
+      await expect(
+        page.getByRole("article").last().getByRole("button", { name: /重置/ }),
+      ).toBeInViewport();
+      expect(await page.evaluate(() => scrollX)).toBe(0);
+      expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0);
+    }
+  });
+}

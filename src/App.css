@@ -21,7 +21,6 @@
 }
 body {
   margin: 0;
-  min-width: 320px;
 }
 button,
 input {
@@ -944,7 +943,7 @@ footer {
   display: block;
 }
 .compact .timer-grid {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 .compact .timer-card {
@@ -997,6 +996,7 @@ footer {
   max-height: 100px;
   overflow: auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 .compact-alert-list p {

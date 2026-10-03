@@ -939,7 +939,7 @@ const App = () => {
       <footer>
         <span>青回传世 · 怪物计时器</span>
         <span>
-          专注每一场战斗 <span className="footer-dot">·</span> v0.3.0
+          专注每一场战斗 <span className="footer-dot">·</span> v0.3.1
         </span>
       </footer>
       <dialog
