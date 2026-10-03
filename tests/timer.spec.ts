@@ -225,7 +225,7 @@ test("多个计时器排序、状态展示及单独重置", async ({ page }) => 
   await expect(page.getByRole("article").first()).toContainText("通天教主");
   await expect(
     page.getByRole("timer", { name: "通天教主刷新倒计时" }),
-  ).toHaveText("已刷新");
+  ).toHaveText("已刷新已过 01:00");
   await expect(
     page.getByRole("timer", { name: "禁地魔王刷新倒计时" }),
   ).toHaveText("03:00");
@@ -346,7 +346,7 @@ test("精简窗口缩小并恢复原尺寸，计时与表单输入保留", async
   );
   await expect(
     page.getByRole("timer", { name: "通天教主刷新倒计时" }),
-  ).toHaveText("已刷新");
+  ).toHaveText("已刷新已过 01:00");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
@@ -917,7 +917,7 @@ test("微调到零显示已刷新且进度填满", async ({ page }) => {
     afterAdjust: [{ ...waiting, deadline: now }],
   });
   await page.getByRole("button", { name: "逆魔 −1分", exact: true }).click();
-  await expect(page.getByRole("timer")).toHaveText("已刷新");
+  await expect(page.getByRole("timer")).toHaveText("已刷新已过 00:00");
   await expect(page.getByRole("progressbar")).toHaveAttribute(
     "aria-valuenow",
     "100",
@@ -1014,7 +1014,9 @@ for (const width of [320, 303]) {
         await expect(reminder).not.toBeVisible();
       }
       if (phase === "ready" || phase === "acknowledged")
-        await expect(page.getByRole("timer").first()).toHaveText("已刷新");
+        await expect(page.getByRole("timer").first()).toHaveText(
+          "已刷新已过 00:00",
+        );
       if (phase === "ready" && width === 303) {
         await page.evaluate(() => scrollTo(0, 0));
         await page.screenshot({
@@ -1047,3 +1049,84 @@ for (const width of [320, 303]) {
     }
   });
 }
+
+for (const elapsed of [
+  { milliseconds: 999, text: "已过 00:00" },
+  { milliseconds: 3_599_999, text: "已过 59:59" },
+  { milliseconds: 3_600_000, text: "已过 01:00:00" },
+  { milliseconds: 90_061_000, text: "已过 25:01:01" },
+  { milliseconds: now, text: "已过 497499:10:00" },
+]) {
+  test(`未重置记录显示 ${elapsed.text}，两种界面保持紧凑`, async ({ page }) => {
+    const expired = {
+      ...ready,
+      name: "长名称怪物".repeat(7),
+      startedAt: Math.max(0, now - elapsed.milliseconds - 5_400_000),
+      deadline: now - elapsed.milliseconds,
+    };
+    await installNativeFixture(page, { now, timers: [expired], alerts: [] });
+    const card = page.getByRole("article");
+    await expect(card.getByRole("timer")).toContainText("已刷新");
+    await expect(card.locator(".elapsed-time")).toHaveText(elapsed.text);
+    expect((await card.boundingBox())?.height).toBeLessThanOrEqual(94);
+    await page.getByRole("button", { name: "精简模式", exact: true }).click();
+    await page.setViewportSize({ width: 303, height: 600 });
+    await expect(card.locator(".elapsed-time")).toHaveText(elapsed.text);
+    expect((await card.boundingBox())?.height).toBeLessThanOrEqual(82);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+    const reset = await card
+      .getByRole("button", { name: /重置/ })
+      .boundingBox();
+    expect((reset?.x ?? 0) + (reset?.width ?? 0)).toBeLessThanOrEqual(303);
+  });
+}
+
+test("已过时间随后台时钟更新，重载恢复，加时和重置恢复倒计时", async ({
+  page,
+}) => {
+  await installNativeFixture(page, {
+    now,
+    timers: [ready],
+    alerts: [],
+    afterAdjust: [{ ...ready, deadline: now + 60_000, refreshed: false }],
+    afterReset: [
+      { ...ready, startedAt: now, deadline: now + 5_400_000, refreshed: false },
+    ],
+  });
+  await expect(page.locator(".elapsed-time")).toHaveText("已过 01:00");
+  await page.evaluate((nextNow) => {
+    const internals = Reflect.get(window, "__TAURI_INTERNALS__");
+    const original = internals.invoke;
+    internals.invoke = async (
+      command: string,
+      args: Record<string, unknown>,
+    ) => {
+      const result = await original(command, args);
+      if (command === "get_snapshot") result.now = nextNow;
+      return result;
+    };
+  }, now + 1_000);
+  await expect(page.locator(".elapsed-time")).toHaveText("已过 01:01");
+  await page.reload();
+  await expect(page.locator(".elapsed-time")).toHaveText("已过 01:00");
+  await page.getByRole("button", { name: "精简模式", exact: true }).click();
+  await page.setViewportSize({ width: 303, height: 600 });
+  await page
+    .getByRole("button", { name: "通天教主 +1分", exact: true })
+    .click();
+  await expect(page.getByRole("timer")).toHaveText("01:00");
+  await expect(page.locator(".elapsed-time")).toHaveCount(0);
+  await page.getByRole("button", { name: "重置通天教主计时" }).click();
+  await expect(page.getByRole("timer")).toHaveText("90:00");
+  await expect(page.locator(".elapsed-time")).toHaveCount(0);
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "0",
+  );
+});

@@ -818,6 +818,23 @@ const App = () => {
                       ) +
                       ":" +
                       String(remainingSeconds % 60).padStart(2, "0");
+                const elapsedSeconds = Math.max(
+                  0,
+                  Math.floor((snapshot.now - timer.deadline) / 1000),
+                );
+                const elapsedTime =
+                  (elapsedSeconds >= 3600
+                    ? String(Math.floor(elapsedSeconds / 3600)).padStart(
+                        2,
+                        "0",
+                      ) + ":"
+                    : "") +
+                  String(Math.floor(elapsedSeconds / 60) % 60).padStart(
+                    2,
+                    "0",
+                  ) +
+                  ":" +
+                  String(elapsedSeconds % 60).padStart(2, "0");
                 const progress =
                   remainingSeconds === 0
                     ? 100
@@ -843,6 +860,9 @@ const App = () => {
                       aria-label={timer.name + "刷新倒计时"}
                     >
                       {countdown}
+                      {remainingSeconds === 0 && (
+                        <span className="elapsed-time">已过 {elapsedTime}</span>
+                      )}
                     </strong>
                     <div className="card-actions">
                       <button
@@ -939,7 +959,7 @@ const App = () => {
       <footer>
         <span>青回传世 · 怪物计时器</span>
         <span>
-          专注每一场战斗 <span className="footer-dot">·</span> v0.3.1
+          专注每一场战斗 <span className="footer-dot">·</span> v0.3.2
         </span>
       </footer>
       <dialog

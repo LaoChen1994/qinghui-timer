@@ -542,9 +542,18 @@ main {
   color: #e7c183;
 }
 .ready .countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
   font-family: inherit;
   font-size: 18px;
+  line-height: 1;
   color: #98c69e;
+}
+.elapsed-time {
+  font-size: 10px;
+  color: #89a18a;
 }
 .progress-track {
   flex: 1;
