@@ -55,7 +55,7 @@ type Snapshot = {
 
 type SharedFile = {
   format: "qinghui-timer";
-  version: 1;
+  version: 1 | 2;
   exportedAt: number;
   timers: Pick<Timer, "name" | "minutes" | "startedAt" | "deadline">[];
 };
@@ -222,6 +222,22 @@ const App = () => {
   };
 
   const handleTimerDeleteRequest = (timer: Timer) => setDeleteTarget(timer);
+  const handleTimerAdjust = async (event: MouseEvent<HTMLButtonElement>) => {
+    if (busy || !desktop) return;
+    const id = Number(event.currentTarget.dataset.timerId);
+    const seconds = Number(event.currentTarget.value);
+    setBusy(true);
+    setActionError("");
+    requestSequence.current += 1;
+    try {
+      await invoke("adjust_timer", { id, seconds });
+      await loadSnapshot();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
   const handleTimerDeleteCancel = () => setDeleteTarget(null);
   const handleTimerDelete = async () => {
     if (!deleteTarget || busy) return;
@@ -802,15 +818,18 @@ const App = () => {
                       ) +
                       ":" +
                       String(remainingSeconds % 60).padStart(2, "0");
-                const progress = Math.max(
-                  0,
-                  Math.min(
-                    100,
-                    ((snapshot.now - timer.startedAt) /
-                      (timer.minutes * 60_000)) *
-                      100,
-                  ),
-                );
+                const progress =
+                  remainingSeconds === 0
+                    ? 100
+                    : Math.max(
+                        0,
+                        Math.min(
+                          100,
+                          ((snapshot.now - timer.startedAt) /
+                            Math.max(1, timer.deadline - timer.startedAt)) *
+                            100,
+                        ),
+                      );
                 return (
                   <article
                     className={"timer-card " + status}
@@ -845,15 +864,41 @@ const App = () => {
                         删除
                       </button>
                     </div>
-                    <div
-                      className="progress-track"
-                      role="progressbar"
-                      aria-label={timer.name + "刷新进度"}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={Math.round(progress)}
-                    >
-                      <div style={{ width: progress + "%" }} />
+                    <div className="adjustment-row">
+                      <div
+                        className="timer-adjustments"
+                        role="group"
+                        aria-label={timer.name + "时间微调"}
+                      >
+                        {[
+                          { seconds: -60, label: "−1分" },
+                          { seconds: -10, label: "−10秒" },
+                          { seconds: 10, label: "+10秒" },
+                          { seconds: 60, label: "+1分" },
+                        ].map((adjustment) => (
+                          <button
+                            key={adjustment.seconds}
+                            data-timer-id={timer.id}
+                            value={adjustment.seconds}
+                            aria-label={timer.name + " " + adjustment.label}
+                            title="调整本轮刷新时间"
+                            disabled={controlsDisabled}
+                            onClick={handleTimerAdjust}
+                          >
+                            {adjustment.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div
+                        className="progress-track"
+                        role="progressbar"
+                        aria-label={timer.name + "刷新进度"}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(progress)}
+                      >
+                        <div style={{ width: progress + "%" }} />
+                      </div>
                     </div>
                   </article>
                 );
@@ -894,7 +939,7 @@ const App = () => {
       <footer>
         <span>青回传世 · 怪物计时器</span>
         <span>
-          专注每一场战斗 <span className="footer-dot">·</span> v0.2.3
+          专注每一场战斗 <span className="footer-dot">·</span> v0.3.0
         </span>
       </footer>
       <dialog

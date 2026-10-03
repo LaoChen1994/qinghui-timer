@@ -24,6 +24,8 @@ type Fixture = {
   alerts: Alert[];
   afterAdd?: Timer[];
   afterReset?: Timer[];
+  afterAdjust?: Timer[];
+  adjustError?: string;
   afterDelete?: Timer[];
   addError?: string;
   windowError?: string;
@@ -76,6 +78,10 @@ const installNativeFixture = async (page: Page, fixture: Fixture) => {
           }
           if (command === "reset_timer" && data.afterReset)
             timers = data.afterReset;
+          if (command === "adjust_timer") {
+            if (data.adjustError) throw new Error(data.adjustError);
+            if (data.afterAdjust) timers = data.afterAdjust;
+          }
           if (command === "delete_timer" && data.afterDelete)
             timers = data.afterDelete;
           if (command === "acknowledge_alerts") alerts = [];
@@ -349,7 +355,7 @@ test("精简窗口缩小并恢复原尺寸，计时与表单输入保留", async
   const rows = await page.getByRole("article").all();
   for (const row of rows) {
     const box = await row.boundingBox();
-    expect(box?.height).toBeLessThanOrEqual(64);
+    expect(box?.height).toBeLessThanOrEqual(82);
   }
   await expect(
     page.getByRole("heading", { name: "青回传世", exact: true }),
@@ -747,14 +753,16 @@ test("主界面卡片紧凑，保留进度与小操作，长名称不撑高卡�
     afterAdd: [waiting, warning, ready, { ...waiting, id: 4, name: longName }],
   });
   for (const card of await page.getByRole("article").all()) {
-    expect((await card.boundingBox())?.height).toBeLessThanOrEqual(84);
+    expect((await card.boundingBox())?.height).toBeLessThanOrEqual(94);
     await expect(card).not.toContainText(
       /预计刷新|上次重置|分钟刷新|距离下次刷新|计时中|击杀后/,
     );
     await expect(card.getByRole("progressbar")).toBeVisible();
-    await expect(card.getByRole("button")).toHaveCount(2);
+    await expect(card.getByRole("button")).toHaveCount(6);
     await expect(card.getByRole("button").first()).toHaveText("重置");
-    await expect(card.getByRole("button").last()).toHaveText("删除");
+    await expect(card.getByRole("button", { name: /^删除/ })).toHaveText(
+      "删除",
+    );
   }
   await expect(page.getByText("还有谁值得守候？")).toHaveCount(0);
   await expect(
@@ -767,7 +775,7 @@ test("主界面卡片紧凑，保留进度与小操作，长名称不撑高卡�
   await page.getByRole("button", { name: "添加并开始计时" }).click();
   await page.setViewportSize({ width: 760, height: 900 });
   const card = page.getByRole("article", { name: longName + "计时器" });
-  expect((await card.boundingBox())?.height).toBeLessThanOrEqual(84);
+  expect((await card.boundingBox())?.height).toBeLessThanOrEqual(94);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth > innerWidth,
@@ -824,4 +832,109 @@ test("新名称可用 radio 跳过，跨日期导入显示完整日期", async (
         choices: [{ action: "keep" }],
       },
     });
+});
+
+for (const adjustment of [
+  {
+    seconds: -60,
+    label: "−1分",
+    countdown: "19:00",
+    progress: "51",
+    compact: false,
+  },
+  {
+    seconds: -10,
+    label: "−10秒",
+    countdown: "19:50",
+    progress: "50",
+    compact: true,
+  },
+  {
+    seconds: 10,
+    label: "+10秒",
+    countdown: "20:10",
+    progress: "50",
+    compact: false,
+  },
+  {
+    seconds: 60,
+    label: "+1分",
+    countdown: "21:00",
+    progress: "49",
+    compact: true,
+  },
+]) {
+  test(`${adjustment.label} 微调传入准确秒数，进度更新且其他怪物不变`, async ({
+    page,
+  }) => {
+    const current = {
+      ...waiting,
+      startedAt: now - 1_200_000,
+      deadline: now + 1_200_000,
+    };
+    await installNativeFixture(page, {
+      now,
+      timers: [current, warning],
+      alerts: [],
+      afterAdjust: [
+        { ...current, deadline: current.deadline + adjustment.seconds * 1000 },
+        warning,
+      ],
+    });
+    if (adjustment.compact) {
+      await page.getByRole("button", { name: "精简模式", exact: true }).click();
+      await page.setViewportSize({ width: 320, height: 600 });
+    }
+    await expect(
+      page.getByRole("group", { name: "逆魔时间微调" }).getByRole("button"),
+    ).toHaveCount(4);
+    await page
+      .getByRole("button", { name: "逆魔 " + adjustment.label, exact: true })
+      .click();
+    await expect(
+      page.getByRole("timer", { name: "逆魔刷新倒计时" }),
+    ).toHaveText(adjustment.countdown);
+    await expect(
+      page.getByRole("progressbar", { name: "逆魔刷新进度" }),
+    ).toHaveAttribute("aria-valuenow", adjustment.progress);
+    await expect(
+      page.getByRole("timer", { name: "禁地魔王刷新倒计时" }),
+    ).toHaveText("03:00");
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, "nativeCalls")))
+      .toContainEqual({
+        command: "adjust_timer",
+        args: { id: 1, seconds: adjustment.seconds },
+      });
+  });
+}
+
+test("微调到零显示已刷新且进度填满", async ({ page }) => {
+  await installNativeFixture(page, {
+    now,
+    timers: [waiting],
+    alerts: [],
+    afterAdjust: [{ ...waiting, deadline: now }],
+  });
+  await page.getByRole("button", { name: "逆魔 −1分", exact: true }).click();
+  await expect(page.getByRole("timer")).toHaveText("已刷新");
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "100",
+  );
+});
+
+test("微调保存失败保留原倒计时，按钮可继续操作", async ({ page }) => {
+  await installNativeFixture(page, {
+    now,
+    timers: [waiting],
+    alerts: [],
+    adjustError: "计时记录保存失败：磁盘空间不足",
+  });
+  await page.getByRole("button", { name: "逆魔 +1分", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("磁盘空间不足");
+  await expect(page.getByRole("timer")).toHaveText("40:00");
+  await expect(
+    page.getByRole("button", { name: "逆魔 +1分", exact: true }),
+  ).toBeEnabled();
 });

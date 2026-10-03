@@ -91,6 +91,14 @@ fn reset_timer(id: u64, state: State<Mutex<Engine>>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn adjust_timer(id: u64, seconds: i32, state: State<Mutex<Engine>>) -> Result<(), String> {
+    let mut engine = state.lock().map_err(|error| error.to_string())?;
+    let mut store = engine.store.clone();
+    store.adjust(id, seconds, timestamp())?;
+    engine.commit(store)
+}
+
+#[tauri::command]
 fn delete_timer(id: u64, state: State<Mutex<Engine>>) -> Result<(), String> {
     let mut engine = state.lock().map_err(|error| error.to_string())?;
     let mut store = engine.store.clone();
@@ -161,7 +169,7 @@ async fn export_timers(
         let engine = state.lock().map_err(|error| error.to_string())?;
         let file = SharedFile {
             format: "qinghui-timer".into(),
-            version: 1,
+            version: 2,
             exported_at: timestamp(),
             timers: engine
                 .store
@@ -274,6 +282,7 @@ pub fn run() {
             get_snapshot,
             add_timer,
             reset_timer,
+            adjust_timer,
             delete_timer,
             acknowledge_alerts,
             preview_import,

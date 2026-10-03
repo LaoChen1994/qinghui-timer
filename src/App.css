@@ -465,7 +465,7 @@ main {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
-  min-height: 80px;
+  min-height: 90px;
   padding: 14px;
   border: 1px solid #343b2d;
   border-radius: 10px;
@@ -548,11 +548,39 @@ main {
   color: #98c69e;
 }
 .progress-track {
-  grid-column: 1 / -1;
+  flex: 1;
+  min-width: 24px;
   height: 3px;
   border-radius: 3px;
   background: #343b2b;
   overflow: hidden;
+}
+.adjustment-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.timer-adjustments {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.timer-adjustments button {
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #3d4633;
+  border-radius: 4px;
+  background: #242c1e;
+  color: #aab89a;
+  font-size: 10px;
+}
+.timer-adjustments button:hover {
+  background: #34422a;
+  border-color: #566947;
+  color: #dce2cd;
 }
 .progress-track > div {
   height: 100%;
@@ -920,7 +948,7 @@ footer {
   gap: 6px;
 }
 .compact .timer-card {
-  min-height: 60px;
+  min-height: 80px;
   padding: 10px;
   gap: 6px 8px;
   border-radius: 8px;

@@ -22,8 +22,8 @@ pub struct SharedFile {
 
 impl SharedFile {
     pub fn validate(&self) -> Result<(), String> {
-        if self.format != "qinghui-timer" || self.version != 1 {
-            return Err("这不是支持的青回传世计时分享文件（需要格式版本 1）".into());
+        if self.format != "qinghui-timer" || ![1, 2].contains(&self.version) {
+            return Err("这不是支持的青回传世计时分享文件（需要格式版本 1 或 2）".into());
         }
         if self.exported_at > 8_640_000_000_000_000 {
             return Err("导出时间戳超出支持范围".into());
@@ -34,13 +34,15 @@ impl SharedFile {
                 || timer.name.chars().count() > 40
                 || !(1..=1440).contains(&timer.minutes)
                 || timer.deadline > 8_640_000_000_000_000
-                || timer
-                    .started_at
-                    .checked_add(u64::from(timer.minutes) * 60_000)
-                    != Some(timer.deadline)
+                || timer.deadline < timer.started_at
+                || (self.version == 1
+                    && timer
+                        .started_at
+                        .checked_add(u64::from(timer.minutes) * 60_000)
+                        != Some(timer.deadline))
             {
                 return Err(format!(
-                    "第 {} 条记录无效：请检查名称、周期及毫秒时间戳，刷新时间应等于上次重置时间加刷新周期",
+                    "第 {} 条记录无效：请检查名称、周期及毫秒时间戳，刷新时间不能早于上次重置时间；版本 1 的时间还须与周期一致",
                     index + 1
                 ));
             }
@@ -367,7 +369,7 @@ mod tests {
                 deadline: 2_401_000,
             }],
         };
-        file.version = 2;
+        file.version = 3;
         assert!(file.validate().is_err());
         file.version = 1;
         file.timers[0].deadline = 1_790_995_000;
@@ -378,5 +380,35 @@ mod tests {
         assert!(file.validate().is_err());
         assert_eq!(original.timers.len(), 1);
         assert_eq!(original.next_id, 1);
+    }
+
+    #[test]
+    fn version_two_preserves_adjusted_deadlines_and_the_original_reset_cycle() {
+        let file = SharedFile {
+            format: "qinghui-timer".into(),
+            version: 2,
+            exported_at: 1_000,
+            timers: vec![SharedTimer {
+                name: "逆魔".into(),
+                minutes: 45,
+                started_at: 1_000,
+                deadline: 2_761_000,
+            }],
+        };
+        let json = serde_json::to_string(&file).unwrap();
+        let restored: SharedFile = serde_json::from_str(&json).unwrap();
+        let (mut store, _) = Store::default()
+            .merge_shared(&restored, &[ImportChoice::Add], 601_000)
+            .unwrap();
+        assert_eq!(store.timers[0].deadline, 2_761_000);
+        assert_eq!(store.timers[0].started_at, 1_000);
+        store.reset(1, 601_000).unwrap();
+        assert_eq!(store.timers[0].deadline, 3_301_000);
+        let mut invalid = restored;
+        invalid.timers[0].deadline = 999;
+        assert!(invalid.validate().is_err());
+        invalid.timers[0].deadline = 2_761_000;
+        invalid.version = 1;
+        assert!(invalid.validate().is_err());
     }
 }

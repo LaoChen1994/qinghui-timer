@@ -82,6 +82,54 @@ impl Store {
         Ok(())
     }
 
+    pub fn adjust(&mut self, id: u64, seconds: i32, now: u64) -> Result<(), String> {
+        if ![-60, -10, 10, 60].contains(&seconds) {
+            return Err("请选择增加或减少 10 秒／1 分钟".into());
+        }
+        let timer = self
+            .timers
+            .iter_mut()
+            .find(|timer| timer.id == id)
+            .ok_or("这只怪物的计时记录已不存在")?;
+        let deadline = if seconds < 0 {
+            timer
+                .deadline
+                .max(now)
+                .saturating_sub(u64::from(seconds.unsigned_abs()) * 1_000)
+                .max(now)
+                .max(timer.started_at)
+        } else {
+            timer
+                .deadline
+                .max(now)
+                .checked_add(u64::from(seconds.unsigned_abs()) * 1_000)
+                .filter(|deadline| *deadline <= 8_640_000_000_000_000)
+                .ok_or("刷新时间超出支持范围")?
+        };
+        let within_warning = deadline > now && deadline - now <= 180_000;
+        timer.warned = timer.warned
+            && timer.deadline > now
+            && timer.deadline - now <= 180_000
+            && within_warning;
+        timer.refreshed = timer.refreshed && deadline <= now;
+        timer.deadline = deadline;
+        self.alerts.retain_mut(|alert| {
+            if alert.timer_id != id {
+                return true;
+            }
+            if (within_warning && timer.warned && alert.kind == AlertKind::Warning)
+                || (deadline <= now && timer.refreshed && alert.kind == AlertKind::Ready)
+            {
+                alert.deadline = deadline;
+                alert.id = format!("{}:{}:{:?}", id, deadline, alert.kind);
+                true
+            } else {
+                false
+            }
+        });
+        Ok(())
+    }
+
     pub fn advance(&mut self, now: u64) -> Vec<Alert> {
         let mut notifications = Vec::new();
         for timer in &mut self.timers {
@@ -212,5 +260,67 @@ mod tests {
         assert_eq!(store.alerts.len(), 1);
         assert_eq!(store.alerts[0].timer_id, 2);
         assert_eq!(store.advance(180_000).len(), 1);
+    }
+
+    #[test]
+    fn adjustments_keep_the_cycle_start_and_other_timers_and_survive_restart() {
+        let mut store = Store::default();
+        store.add("逆魔", 45, 1_000).unwrap();
+        store.add("通天教主", 60, 1_000).unwrap();
+        for seconds in [10, 60, -10, -60] {
+            store.adjust(1, seconds, 2_000).unwrap();
+        }
+        assert_eq!(store.timers[0].deadline, 2_701_000);
+        store.adjust(1, 60, 2_000).unwrap();
+        assert_eq!(store.timers[0].started_at, 1_000);
+        assert_eq!(store.timers[0].minutes, 45);
+        assert_eq!(store.timers[1].deadline, 3_601_000);
+        let json = serde_json::to_string(&store).unwrap();
+        let mut restored: Store = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.timers[0].deadline, 2_761_000);
+        restored.reset(1, 10_000).unwrap();
+        assert_eq!(restored.timers[0].deadline, 2_710_000);
+    }
+
+    #[test]
+    fn adjustments_clamp_at_zero_and_rearm_reminders_without_repeated_warnings() {
+        let mut store = Store::default();
+        store.add("逆魔", 1, 1_000).unwrap();
+        store.adjust(1, -60, 31_000).unwrap();
+        assert_eq!(store.timers[0].deadline, 31_000);
+        assert_eq!(store.advance(31_000)[0].kind, AlertKind::Ready);
+        assert!(store.advance(31_000).is_empty());
+        store.adjust(1, 10, 32_000).unwrap();
+        assert_eq!(store.timers[0].deadline, 42_000);
+        assert!(store.alerts.is_empty());
+        assert_eq!(store.advance(32_000)[0].kind, AlertKind::Warning);
+        store.adjust(1, 60, 32_000).unwrap();
+        assert_eq!(store.alerts[0].deadline, 102_000);
+        assert!(store.alerts[0].id.contains("102000"));
+        assert!(store.advance(32_000).is_empty());
+        store.alerts.clear();
+        store.adjust(1, -10, 32_000).unwrap();
+        assert!(store.advance(32_000).is_empty());
+        for _ in 0..3 {
+            store.adjust(1, 60, 32_000).unwrap();
+        }
+        assert!(!store.timers[0].warned);
+        store.adjust(1, -60, 32_000).unwrap();
+        assert_eq!(store.advance(32_000)[0].kind, AlertKind::Warning);
+        store.adjust(1, 60, 32_000).unwrap();
+        assert!(store.alerts.is_empty());
+        assert!(store.advance(32_000).is_empty());
+    }
+
+    #[test]
+    fn invalid_adjustments_do_not_modify_timers() {
+        let mut store = Store::default();
+        store.add("逆魔", 45, 1_000).unwrap();
+        assert!(store.adjust(1, 1, 2_000).is_err());
+        assert!(store.adjust(99, 60, 2_000).is_err());
+        assert_eq!(store.timers[0].deadline, 2_701_000);
+        store.timers[0].deadline = 8_640_000_000_000_000;
+        assert!(store.adjust(1, 10, 2_000).is_err());
+        assert_eq!(store.timers[0].deadline, 8_640_000_000_000_000);
     }
 }
