@@ -92,7 +92,7 @@ const App = () => {
     };
   });
   const [name, setName] = useState("");
-  const [preset, setPreset] = useState("40");
+  const [preset, setPreset] = useState("45");
   const [customMinutes, setCustomMinutes] = useState("");
   const [fieldError, setFieldError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -659,7 +659,7 @@ const App = () => {
                 role="group"
                 aria-labelledby="cycle-label"
               >
-                {["40", "60", "90"].map((minutes) => (
+                {["45", "60", "90"].map((minutes) => (
                   <button
                     key={minutes}
                     type="button"
@@ -894,7 +894,7 @@ const App = () => {
       <footer>
         <span>青回传世 · 怪物计时器</span>
         <span>
-          专注每一场战斗 <span className="footer-dot">·</span> v0.2.2
+          专注每一场战斗 <span className="footer-dot">·</span> v0.2.3
         </span>
       </footer>
       <dialog

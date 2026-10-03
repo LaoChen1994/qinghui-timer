@@ -154,8 +154,8 @@ test("预设选择、名称修剪和添加后的真实卡片", async ({ page }) 
   const added = {
     ...waiting,
     name: "禁地魔王",
-    minutes: 60,
-    deadline: now + 3_600_000,
+    minutes: 45,
+    deadline: now + 2_700_000,
   };
   await installNativeFixture(page, {
     now,
@@ -164,22 +164,26 @@ test("预设选择、名称修剪和添加后的真实卡片", async ({ page }) 
     afterAdd: [added],
   });
   await page.getByLabel("怪物名称").fill("  禁地魔王  ");
+  await expect(
+    page.getByRole("button", { name: "45 分钟", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "60 分钟", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "60 分钟", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "45 分钟", exact: true }).click();
   await page.getByRole("button", { name: "添加并开始计时" }).click();
   await expect(
     page.getByRole("article", { name: "禁地魔王计时器" }),
   ).toBeVisible();
   await expect(
     page.getByRole("timer", { name: "禁地魔王刷新倒计时" }),
-  ).toHaveText("60:00");
+  ).toHaveText("45:00");
   await expect(page.getByLabel("怪物名称")).toHaveValue("");
   await expect
     .poll(() => page.evaluate(() => Reflect.get(window, "nativeCalls")))
     .toEqual([
-      { command: "add_timer", args: { name: "禁地魔王", minutes: 60 } },
+      { command: "add_timer", args: { name: "禁地魔王", minutes: 45 } },
     ]);
 });
 

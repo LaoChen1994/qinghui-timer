@@ -4,7 +4,7 @@
 
 ## 使用
 
-1. 输入怪物名称，选择 40、60、90 分钟或自定义刷新周期，点击「添加并开始计时」。
+1. 输入怪物名称，选择 45、60、90 分钟或自定义刷新周期，默认选中 45 分钟，点击「添加并开始计时」。
 2. 多只怪物分别计时，按预计刷新时间排序。
 3. 击杀怪物后，点击卡片右侧的「重置」小按钮，从此刻开始下一轮。
 4. 剩余 3 分钟和到点时分别弹框提醒。开启系统通知后，切到游戏也能接收系统提醒。
@@ -42,10 +42,10 @@
 
 本次构建产物放在 `releases/`：
 
-- [macOS 通用版 0.2.2](releases/青回传世怪物计时器_0.2.2_macOS_通用版.dmg)：打开 DMG，将应用拖入「应用程序」。包含 Apple Silicon 与 Intel 两种架构，最低系统版本为 macOS 11。
-- [Windows x64 中文安装版 0.2.2](releases/青回传世怪物计时器_0.2.2_Windows_x64_安装版.exe)：运行安装程序，完成后从开始菜单启动。面向 Windows 10/11 x64；安装程序会检查 WebView2，缺少运行库时下载并安装。
+- [macOS 通用版 0.2.3](releases/青回传世怪物计时器_0.2.3_macOS_通用版.dmg)：打开 DMG，将应用拖入「应用程序」。包含 Apple Silicon 与 Intel 两种架构，最低系统版本为 macOS 11。
+- [Windows x64 中文安装版 0.2.3](releases/青回传世怪物计时器_0.2.3_Windows_x64_安装版.exe)：运行安装程序，完成后从开始菜单启动。面向 Windows 10/11 x64；安装程序会检查 WebView2，缺少运行库时下载并安装。
 
-当前是未使用开发者证书签名的本地版本，尚未完成 macOS 公证。macOS 0.2.2 已在 Apple Silicon 本机验证窗口与按钮操作。Windows 尚未实机验证。详细范围见 [验证报告](docs/verification.md)。系统若阻止启动，请通过系统提示或「隐私与安全性」查看该应用的打开选项。
+当前是未使用开发者证书签名的本地版本，尚未完成 macOS 公证。macOS 0.2.3 已在 Apple Silicon 本机验证快捷周期和默认添加 45 分钟。Windows 尚未实机验证。详细范围见 [验证报告](docs/verification.md)。系统若阻止启动，请通过系统提示或「隐私与安全性」查看该应用的打开选项。
 
 ## 本地开发
 
@@ -86,7 +86,7 @@ pnpm tauri build --target universal-apple-darwin --bundles app,dmg -- --locked
 pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
 ```
 
-`.github/workflows/build.yml` 提供可手动运行的 Windows/macOS 原生构建流程，执行 Rust 测试后上传安装包。尚未连接远端仓库，也没有运行远端流程。
+`.github/workflows/build.yml` 提供可手动运行的 Windows/macOS 原生构建流程，执行 Rust 测试后上传安装包。源码已推送至 [GitHub](https://github.com/LaoChen1994/qinghui-timer)，本次没有运行远端流程。
 
 如使用终端访问依赖仓库或其他外部接口，并且设置了代理变量，请遵守本项目的直连要求：
 
